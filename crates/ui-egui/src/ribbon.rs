@@ -1315,6 +1315,19 @@ fn design(app: &mut WordApp, ui: &mut Ui) {
                     mi_text(ui, app, &format!("{}: {h} / {b}", tl!(name)), "design.themeFonts", json!({"heading": h, "body": b}));
                 }
             });
+            menu_button(ui, app, "fontSizes", Some("Font Sizes"), "Font Sizes", false, "design.fontSizes", |ui, app| {
+                let pt = tl!("pt");
+                for (l, v) in [
+                    (format!("+1 {pt}"), json!({"delta": 1})),
+                    (format!("+2 {pt}"), json!({"delta": 2})),
+                    ("+10 %".to_string(), json!({"percent": 10})),
+                    (format!("\u{2212}1 {pt}"), json!({"delta": -1})),
+                    (format!("\u{2212}2 {pt}"), json!({"delta": -2})),
+                    ("\u{2212}10 %".to_string(), json!({"percent": -10})),
+                ] {
+                    mi_text(ui, app, &l, "design.fontSizes", v);
+                }
+            });
         });
         stack(ui, |ui| {
             menu_button(ui, app, "paraSpacing", Some("Paragraph Spacing"), "Paragraph Spacing", false, "design.paragraphSpacing", |ui, app| {

@@ -7232,3 +7232,35 @@ fn vertical_align_command_sets_justified() {
         assert_eq!(serde_json::to_value(crate::cmd::page::sect(&s)).unwrap()["valign"], json!(name));
     }
 }
+
+/// #1475: `design.fontSizes` moves every size the styles set by points or by a percentage, once
+/// each, leaves styles that inherit their size to follow, and is a single Undo step.
+#[test]
+fn font_sizes_resize_every_style_once() {
+    let mut s = s();
+    let size = |s: &Session, id: &str| s.doc.styles.get(id).and_then(|st| st.chr.size);
+    let (normal, h1, h2) = (s.doc.styles.default_chr.size, size(&s, "Heading1"), size(&s, "Heading2"));
+    let (normal, h1, h2) = (normal.unwrap_or(11.0), h1.expect("Heading 1 sets a size"), h2.expect("Heading 2 sets a size"));
+    run(&mut s, "design.fontSizes", json!({"delta": 2}));
+    assert_eq!(s.doc.styles.default_chr.size, Some(normal + 2.0));
+    assert_eq!(size(&s, "Heading1"), Some(h1 + 2.0));
+    assert_eq!(size(&s, "Heading2"), Some(h2 + 2.0));
+    // A style without a size of its own is not given one: it follows its base.
+    let inherits: Vec<_> = s.doc.styles.styles.iter().filter(|st| st.chr.size.is_none()).map(|st| st.id.clone()).collect();
+    assert!(!inherits.is_empty());
+    run(&mut s, "design.fontSizes", json!({"percent": 10}));
+    assert!(inherits.iter().all(|id| s.doc.styles.get(id).is_some_and(|st| st.chr.size.is_none())));
+    assert_eq!(s.doc.styles.default_chr.size, Some(((normal + 2.0) * 1.1 * 2.0).round() / 2.0), "half-point grid");
+    run(&mut s, "edit.undo", json!({}));
+    assert_eq!(s.doc.styles.default_chr.size, Some(normal + 2.0), "one Undo step");
+    // Sizes stay inside Word's range, and a bad call changes nothing.
+    run(&mut s, "design.fontSizes", json!({"delta": -5000}));
+    assert!(s.doc.styles.styles.iter().filter_map(|st| st.chr.size).all(|x| x == 1.0));
+    run(&mut s, "design.fontSizes", json!({"percent": 1e9}));
+    assert!(s.doc.styles.styles.iter().filter_map(|st| st.chr.size).all(|x| x == 1638.0));
+    let before = serde_json::to_value(&s.doc.styles).unwrap();
+    for bad in [json!({}), json!({"delta": 1, "percent": 1}), json!({"percent": -100}), json!({"delta": "x"})] {
+        assert!(s.run("design.fontSizes", &bad).is_err(), "{bad}");
+    }
+    assert_eq!(serde_json::to_value(&s.doc.styles).unwrap(), before);
+}

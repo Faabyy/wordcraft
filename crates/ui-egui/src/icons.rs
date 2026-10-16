@@ -625,6 +625,10 @@ pub fn paint(p: &Painter, r: Rect, name: &str, c: Color32, accent: Color32) {
             pen.fcircle(10.0, 13.0, 3.5, green);
         }
         "fonts" => pen.text(10.0, 10.0, 13.0, "Aa", a, false),
+        "fontSizes" => {
+            pen.text(7.5, 11.0, 13.0, "A", a, true);
+            pen.text(15.0, 12.5, 8.0, "A", a, false);
+        }
         "paraSpacing" => {
             pen.lines(8.0, 17.0, &[4.0, 7.0, 13.0, 16.0]);
             pen.line_c(&[(4.0, 8.0), (4.0, 12.0)], a);

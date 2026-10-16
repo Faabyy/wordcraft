@@ -1,7 +1,7 @@
 //! Design tab: themes, style sets, colours, fonts, paragraph spacing, watermark, page colour, borders.
 
 use serde_json::{Value, json};
-use wordcraft_doc::props::{Border, BorderStyle, Borders, LineSpacing, Rgb, TextColor};
+use wordcraft_doc::props::{Border, BorderStyle, Borders, CharProps, LineSpacing, Rgb, TextColor};
 use wordcraft_doc::{Watermark, styles};
 
 use super::sel_result;
@@ -67,6 +67,8 @@ pub fn specs() -> Vec<CommandSpec> {
             .params(r#"{"name": "default|basic|lines|shaded|casual|centered|minimalist|title"}"#),
         CommandSpec::new("design.paragraphSpacing", "Paragraph Spacing", "Design › Document Formatting", para_spacing)
             .params(r#"{"value": "default|none|compact|tight|open|relaxed|double"}"#),
+        CommandSpec::new("design.fontSizes", "Font Sizes", "Design › Document Formatting", font_sizes)
+            .params(r#"{"delta"?: points (e.g. 2 or -1), "percent"?: number (e.g. 10 or -10); exactly one of the two}"#),
         CommandSpec::new("design.watermark", "Watermark", "Design › Page Background", watermark)
             .params(r#"{"text"?: string, "remove"?: bool, "diagonal"?: bool, "color"?: "RRGGBB"}"#),
         CommandSpec::new("design.pageColor", "Page Color", "Design › Page Background", |s, v| {
@@ -193,6 +195,62 @@ fn para_spacing(s: &mut Session, v: &Value) -> CmdResult {
     s.doc.styles.default_para.space_before = Some(before);
     s.doc.styles.default_para.space_after = Some(after);
     s.doc.styles.default_para.line_spacing = Some(LineSpacing::Multiple(line));
+    sel_result(s)
+}
+
+/// How `design.fontSizes` changes a size: by a number of points or by a percentage.
+#[derive(Clone, Copy)]
+enum SizeChange {
+    Points(f32),
+    Percent(f32),
+}
+
+impl SizeChange {
+    /// The new size, kept inside Word's 1–1638 pt and on its half-point grid (`w:sz`).
+    fn apply(self, size: f32) -> f32 {
+        let new = match self {
+            SizeChange::Points(d) => size + d,
+            SizeChange::Percent(p) => size * (1.0 + p / 100.0),
+        };
+        (new.clamp(1.0, 1638.0) * 2.0).round() / 2.0
+    }
+}
+
+/// Resize the sizes a character formatting sets itself; sizes it leaves unset are inherited and
+/// follow whatever they inherit from.
+fn resize_chr(c: &mut CharProps, change: SizeChange) {
+    c.size = c.size.map(|x| change.apply(x));
+    c.size_cs = c.size_cs.map(|x| change.apply(x));
+}
+
+/// Design › Fonts › Font Sizes: grow or shrink the text of the whole document by editing its
+/// styles, so nothing becomes direct formatting. Every size a style (paragraph, character or
+/// table) or the document defaults set is changed once; styles that inherit their size follow the
+/// style they are based on. Sizes set directly on text (the Font box) stay as they are.
+fn font_sizes(s: &mut Session, v: &Value) -> CmdResult {
+    let change = match (p::f32(v, "delta"), p::f32(v, "percent")) {
+        (Some(d), None) => SizeChange::Points(d),
+        (None, Some(pc)) if pc > -100.0 => SizeChange::Percent(pc),
+        (None, Some(_)) => return Err(CmdError::Params("`percent` must be greater than -100".into())),
+        _ => return Err(CmdError::Params("give exactly one of `delta` (points) or `percent`".into())),
+    };
+    let sheet = &mut s.doc.styles;
+    // An unset default size is 11 pt (what layout uses), so it has to be written to move.
+    let default = sheet.default_chr.size.unwrap_or(11.0);
+    sheet.default_chr.size = Some(change.apply(default));
+    sheet.default_chr.size_cs = sheet.default_chr.size_cs.map(|x| change.apply(x));
+    for st in &mut sheet.styles {
+        resize_chr(&mut st.chr, change);
+        if let Some(t) = st.table.as_mut() {
+            for c in [&mut t.header_chr, &mut t.band_chr, &mut t.first_col_chr, &mut t.total_chr, &mut t.last_col_chr, &mut t.col_band_chr] {
+                resize_chr(c, change);
+            }
+            for part in t.regions.values_mut() {
+                resize_chr(&mut part.chr, change);
+            }
+        }
+    }
+    super::para::touch_all(s);
     sel_result(s)
 }
 
