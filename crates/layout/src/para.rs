@@ -1723,7 +1723,7 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
     let before_slash: Vec<usize> = text
         .match_indices('/')
         .filter(|&(i, _)| {
-            text.get(..i).and_then(|t| t.chars().next_back()).is_some_and(char::is_whitespace)
+            text.get(..i).and_then(|t| t.chars().next_back()).is_some_and(|c| c.is_whitespace() && !matches!(c, '\u{a0}' | '\u{2007}' | '\u{202f}'))
                 && text.get(i + 1..).and_then(|t| t.chars().next()).is_some_and(char::is_alphanumeric)
         })
         .map(|(i, _)| i)

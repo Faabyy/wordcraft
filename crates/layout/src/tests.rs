@@ -4461,6 +4461,36 @@ fn a_word_after_a_slash_wraps_whole() {
     assert!(wrapped > 100, "{wrapped} widths wrapped");
 }
 
+/// The break before a slash word (#2963) needs a breakable space: a no-break space before the
+/// slash keeps it on the line.
+#[test]
+fn a_no_break_space_before_a_slash_still_holds() {
+    let starts = |nb: char| -> (usize, usize) {
+        // Varying word lengths, so the lines end at different places in the pattern.
+        let text: String = (0..80).map(|i| format!("caption{nb}/word {} ", "w".repeat(1 + i % 5))).collect();
+        let l = lay(&Document::from_text(&text));
+        let (mut lines, mut at_slash) = (0, 0);
+        for p in &l.pages {
+            for it in &p.items {
+                if let Placed::Lines { para, l0, l1, .. } = it {
+                    for line in &para.lines[*l0..*l1] {
+                        lines += 1;
+                        at_slash += usize::from(text[..line.start].ends_with(nb));
+                    }
+                }
+            }
+        }
+        (lines, at_slash)
+    };
+    let (lines, at_slash) = starts(' ');
+    assert!(lines > 10 && at_slash > 0, "control: {at_slash} of {lines} lines start at a slash word");
+    for nb in ['\u{a0}', '\u{2007}', '\u{202f}'] {
+        let (lines, at_slash) = starts(nb);
+        assert!(lines > 10, "{lines} lines");
+        assert_eq!(at_slash, 0, "lines start after {nb:?}");
+    }
+}
+
 #[test]
 fn unequal_formats_lay_out_in_linear_time() {
     // Runs whose formats never compare equal (NaN spacing from a hostile file) each get a style;
