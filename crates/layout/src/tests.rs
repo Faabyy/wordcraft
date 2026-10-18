@@ -4461,6 +4461,52 @@ fn a_word_after_a_slash_wraps_whole() {
     assert!(wrapped > 100, "{wrapped} widths wrapped");
 }
 
+/// #2963 happened in a fixed-width table cell: the cell's own width is the line width there.
+#[test]
+fn a_word_after_a_slash_wraps_whole_in_a_fixed_cell() {
+    let (head, slash, tail) = ("ЖСН енгізілмеген жағдайда толтырылады", " /", "заполняется в случае неприсвоения ИИН");
+    let text = format!("{head}{slash}{tail}");
+    let italic = wordcraft_doc::CharProps { italic: Some(true), ..Default::default() };
+    let mut p = wordcraft_doc::Paragraph::new();
+    p.text = text.clone();
+    p.runs = vec![
+        wordcraft_doc::Run { len: head.len(), props: italic.clone() },
+        wordcraft_doc::Run { len: slash.len(), props: Default::default() },
+        wordcraft_doc::Run { len: tail.len(), props: italic },
+    ];
+    let mut wrapped = 0;
+    // From the width where the longest word fits in the cell.
+    for width in 90..=400 {
+        let mut table = Table::new(1, 1, width as f32);
+        table.props.style = None;
+        table.props.fixed = true;
+        table.props.cell_margins = Some([0.0; 4]);
+        table.rows[0].cells[0].blocks = vec![wordcraft_doc::para_block(p.clone())];
+        let mut d = Document::new();
+        d.body = vec![std::sync::Arc::new(Block::Table(table))];
+        let l = lay(&d);
+        let lines: Vec<String> = l.pages[0]
+            .items
+            .iter()
+            .filter_map(|it| {
+                if let Placed::Lines { para, l0, l1, .. } = it {
+                    Some(para.lines[*l0..*l1].iter().map(|line| text[line.start..line.stop].to_string()).collect::<Vec<_>>())
+                } else {
+                    None
+                }
+            })
+            .flatten()
+            .collect();
+        if lines.len() < 2 {
+            continue; // fits on one line
+        }
+        wrapped += 1;
+        let (_, rest) = lines.split_last().expect("lines");
+        assert!(rest.iter().all(|l| l.ends_with(' ')), "a word is split at cell width {width}: {lines:?}");
+    }
+    assert!(wrapped > 100, "{wrapped} widths wrapped");
+}
+
 /// The break before a slash word (#2963) needs a breakable space: a no-break space before the
 /// slash keeps it on the line.
 #[test]
